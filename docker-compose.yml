@@ -1,0 +1,91 @@
+services:
+  db:
+    # PostgreSQL database service configured via .env secrets
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"  # Expose database port from environment
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - thebase_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -h 127.0.0.1 -p "$${POSTGRES_PORT:-5432}"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - appnet
+
+  web:
+    # Django application served by Gunicorn
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy  # Ensure database is healthy before starting
+    ports:
+      - "${WEB_PORT:-8000}:8000"  # Map host port for web traffic
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-backend.settings}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_DEBUG: ${DJANGO_DEBUG}
+      DJANGO_TIME_ZONE: ${DJANGO_TIME_ZONE}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT}
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - logs_volume:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    networks:
+      - appnet
+
+  nginx:
+    # Reverse proxy providing public HTTP access
+    image: nginx:1.27-alpine
+    depends_on:
+      web:
+        condition: service_healthy  # Wait until Django app passes healthcheck
+    ports:
+      - "${NGINX_PORT:-80}:80"  # Expose Nginx port defined in .env
+    volumes:
+      - static_volume:/static
+      - media_volume:/media
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - logs_volume:/var/log/thebase
+    restart: unless-stopped
+    networks:
+      - appnet
+
+# Named volumes keep data between container restarts
+volumes:
+  thebase_pgdata:
+  static_volume:
+  media_volume:
+  logs_volume:
+
+# Shared application network for inter-service communication
+networks:
+  appnet:
+    driver: bridge

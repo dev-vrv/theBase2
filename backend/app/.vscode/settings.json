@@ -1,0 +1,20 @@
+{
+  "files.exclude": {
+    "**/.git": true,
+    "**/.venv": true,
+    "**/.pytest_cache": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/coverage": true,
+    "**/public/assets": true,
+    "**/*.map": true,
+    "**/*.min.*": true,
+    "**/*.png": true,
+    "**/*.jpg": true,
+    "**/*.webp": true,
+    "**/*.svg": true,
+    "**/*.pdf": true,
+    "**/*.lock": true
+  },
+  "search.exclude": { "**/*": true }
+}
