@@ -33,10 +33,21 @@ APP_DIR="$1"
 
 cd "$APP_DIR"
 
+# Ensure images are up-to-date
 docker compose pull || true
 docker compose build
-docker compose up -d
-docker compose exec web python manage.py migrate --noinput
-docker compose exec web python manage.py collectstatic --noinput
+
+# Start database first
+docker compose up -d db
+
+# Wait for DB using the web image's script (has netcat)
+docker compose run --rm web bash scripts/wait-for.sh "${POSTGRES_HOST:-db}" "${POSTGRES_PORT:-5432}" 60
+
+# Run migrations and collect static assets
+docker compose run --rm web python manage.py migrate --noinput
+docker compose run --rm web python manage.py collectstatic --noinput
+
+# Start application stack (web runs via Gunicorn inside container)
+docker compose up -d web nginx
+
 docker compose ps
-SSH
